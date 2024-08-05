@@ -190,7 +190,7 @@ class get_model(nn.Module):
         return bytes_strings, bytes_strings_hyper,compressed_z
     def decompress(self, strings, min_v, max_v, shape):
         symbols = torch.arange(min_v, max_v+1)
-        symbols = torch.tensor(symbols.reshape(1, -1).repeat( shape[-1],1)).cuda()
+        symbols = symbols.reshape(1, -1).repeat( shape[-1],1).cuda()
         pmf = self._likelihood_z(symbols.T)
         pmf=pmf.T
         pmf = pmf / (pmf.sum(dim=-1, keepdim=True)) #dim=K de dim

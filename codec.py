@@ -12,8 +12,8 @@ import importlib
 import sys
 import argparse
 import gc
-from utils1.pc_error_wrapper import pc_error
-
+# from utils1.pc_error_wrapper import pc_error
+from pc_error import pc_error
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
 sys.path.append(os.path.join(ROOT_DIR, 'models'))
@@ -23,7 +23,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 def parse_args():
     '''PARAMETERS'''
     parser = argparse.ArgumentParser('TSC-PCAC')
-    parser.add_argument('--dataset_path', type=str, default='')
+    parser.add_argument('--dataset_path', type=str, default='data/Dataset/8iVFBv2/loot/Ply/*00.ply')
     return parser.parse_args()
 if __name__ == '__main__':
 
@@ -32,7 +32,7 @@ if __name__ == '__main__':
     ckpt_of_different_rates = ['r0', 'r1', 'r2','r3', 'r4'
                                ]
     ckpt_of_different_rates=ckpt_of_different_rates[::-1]
-    filedirs_train = sorted(glob.glob(args.dataset_path + '/*.ply'))
+    filedirs_train = sorted(glob.glob(args.dataset_path))
     test_data = PCDataset(filedirs_train)
     test_loader = make_data_loader(test_data, num_workers=1, batch_size=1, shuffle=False)
     outdir = './output'
@@ -86,34 +86,34 @@ if __name__ == '__main__':
                 if not os.path.exists('pc_file'): os.makedirs('pc_file')
                 recfile = 'pc_file/' + filename + '_r' + str(idx_rate) + '_rec.ply'
                 open3d.io.write_point_cloud(recfile, rec_pcd, write_ascii=True)
-                pc_error_metrics = pc_error(infile1=filedir, infile2=recfile, res=1) 
-                pc_errors = [pc_error_metrics["c[0],PSNRF"][0],
-                             pc_error_metrics["c[1],PSNRF"][0],
-                             pc_error_metrics["c[2],PSNRF"][0]]
-
-                results = pc_error_metrics
+                pc_error_metrics = pc_error(ref_point_cloud=filedir, dis_point_cloud=recfile, peakvalue=1)
+                pc_errors = pc_error_metrics["yuv"]
+                results = {'y': pc_errors[0], 'u': pc_errors[1], 'v': pc_errors[2]}
                 results["bpp"] = np.array(bpp).astype('float32')
                 results["enc_time"] = np.array((enc_time)).astype('float32')
                 results["dec_time"] = np.array(dec_time)
                 fimename=os.path.split(str(test_data.files[step]))[-1].split('.')[0]
+                results['name'] = fimename
                 fimename=re.split(r'\d+',fimename)[0]
                 results['sequence'] = fimename
+                results = pd.DataFrame(results, index=[0])
                 last_col = results.pop(results.columns[-1])
                 results.insert(0, last_col.name, last_col)
+                print(results)
                 if step == 0:
                     all_result = results.copy(deep=True)
                 else:
-                    all_result = all_result.append(results, ignore_index=True)
+                    all_result = pd.concat([all_result, pd.DataFrame(results)], ignore_index=True)
                 torch.cuda.empty_cache()
                 gc.collect()
-        all_result=all_result.groupby('sequence').mean().reset_index()
+        all_result=all_result.groupby('sequence').mean(numeric_only=True).reset_index()
         idx_rate+=1
         if idx == 0:
             global all_results
             all_results = all_result.copy(deep=True)
             idx = 1
         else:
-            all_results = all_results.append(all_result, ignore_index=True)
+            all_results = pd.concat([all_results, pd.DataFrame(all_result)], ignore_index=True)
     if not os.path.exists('result'): os.makedirs('result')
     csv_name = os.path.join('./result/', 'result.csv')
     all_results.to_csv(csv_name, index=False)
